@@ -30,3 +30,7 @@ Esto crea `configuracion/encuesta_actual` y `configuracion/esquema_respuestas`. 
 Las reglas versionadas están en `firestore.rules`. Para publicarlas, la cuenta usada debe tener el rol IAM `Firebase Rules Admin` (`roles/firebaserules.admin`) y luego se puede ejecutar `npm run deploy:firestore-rules`. La cuenta Admin no debe subirse al repositorio ni configurarse como variable `VITE_*`.
 
 La aplicación no solicita nombre, correo ni datos de contacto. Las respuestas se almacenan con fecha, valoraciones y comentario opcional para el análisis interno.
+
+## Panel administrativo
+
+El panel está disponible en `/admin`. Habilita el proveedor **Email/Password** en Firebase Authentication y crea allí las cuentas autorizadas. Después de iniciar sesión, cada usuario autenticado puede consultar las respuestas de `encuestas_satisfaccion`; el público no puede leerlas.

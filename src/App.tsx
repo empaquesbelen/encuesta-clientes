@@ -1,6 +1,7 @@
-import { useState } from 'react'
-import { ArrowLeft, ArrowRight, Check, CircleHelp, Send, Sparkles } from 'lucide-react'
-import { collection, addDoc, getFirestore, serverTimestamp } from 'firebase/firestore'
+import { useEffect, useState, type FormEvent } from 'react'
+import { ArrowLeft, ArrowRight, Check, CircleHelp, LogOut, RefreshCw, Send, Sparkles } from 'lucide-react'
+import { collection, addDoc, getDocs, getFirestore, serverTimestamp } from 'firebase/firestore'
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
 import { initializeApp } from 'firebase/app'
 
 const scale = ['Malo', 'Regular', 'Bueno', 'Muy bueno', 'Excelente'] as const
@@ -35,6 +36,14 @@ const firebaseConfig = {
 const hasFirebaseConfig = Object.values(firebaseConfig).every(Boolean)
 const firebaseApp = hasFirebaseConfig ? initializeApp(firebaseConfig) : null
 const database = firebaseApp ? getFirestore(firebaseApp) : null
+const auth = firebaseApp ? getAuth(firebaseApp) : null
+
+type SurveyResponse = {
+  id: string
+  answers: Record<string, Answer>
+  comment: string
+  submittedAt?: { toDate: () => Date }
+}
 
 async function saveResponse(answers: Record<string, Answer>, comment: string) {
   const payload = {
@@ -53,7 +62,65 @@ async function saveResponse(answers: Record<string, Answer>, comment: string) {
   localStorage.setItem('encuestas-pendientes', JSON.stringify([...saved, payload]))
 }
 
+function AdminPage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [responses, setResponses] = useState<SurveyResponse[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (!auth) return
+    return onAuthStateChanged(auth, setUser)
+  }, [])
+
+  async function loadResponses() {
+    if (!database) {
+      setError('Firebase no está configurado en este entorno.')
+      return
+    }
+    setIsLoading(true)
+    setError('')
+    try {
+      const snapshot = await getDocs(collection(database, 'encuestas_satisfaccion'))
+      setResponses(snapshot.docs.map((document) => ({ id: document.id, ...document.data() }) as SurveyResponse).reverse())
+    } catch {
+      setError('No se pudieron cargar las respuestas. Verifica que tu cuenta tenga acceso.')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (user) void loadResponses()
+  }, [user])
+
+  async function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!auth) {
+      setError('Firebase no está configurado en este entorno.')
+      return
+    }
+    setError('')
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password)
+      setPassword('')
+    } catch {
+      setError('Correo o contraseña incorrectos.')
+    }
+  }
+
+  if (!user) {
+    return <main className="admin-shell"><header className="brand-header"><img src="/logo.webp" alt="Empaques Belén" /></header><section className="admin-login"><span className="admin-kicker">Panel de administración</span><h1>Respuestas de clientes</h1><p>Ingresa con una cuenta autorizada para consultar la encuesta.</p><form onSubmit={login}><label htmlFor="admin-email">Correo electrónico</label><input id="admin-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" /><label htmlFor="admin-password">Contraseña</label><input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /><button className="next-button" type="submit">Ingresar <ArrowRight size={17} /></button></form>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}</section></main>
+  }
+
+  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><strong>Encuesta #{responses.length - index}</strong><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.category} · {question.id}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
+}
+
 function App() {
+  if (window.location.pathname === '/admin') return <AdminPage />
+
   const [current, setCurrent] = useState(0)
   const [answers, setAnswers] = useState<Record<string, Answer>>({})
   const [comment, setComment] = useState('')
