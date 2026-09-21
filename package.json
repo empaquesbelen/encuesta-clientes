@@ -1,0 +1,28 @@
+{
+  "name": "encuesta-empaques-belen",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "seed:firestore": "node scripts/seed-firestore.cjs",
+    "deploy:firestore-rules": "node scripts/deploy-firestore-rules.cjs"
+  },
+  "dependencies": {
+    "firebase": "^12.2.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.10",
+    "@types/react-dom": "^19.1.7",
+    "@vitejs/plugin-react": "^5.0.2",
+    "firebase-admin": "^13.5.0",
+    "firebase-tools": "^15.30.2",
+    "typescript": "~5.8.3",
+    "vite": "^7.1.4"
+  }
+}

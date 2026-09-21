@@ -1,0 +1,58 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isValidAnswer(value) {
+      return value is string
+        && value in ['Malo', 'Regular', 'Bueno', 'Muy bueno', 'Excelente'];
+    }
+
+    function hasValidAnswers(answers) {
+      return answers is map
+        && answers.keys().hasOnly([
+          'variedad', 'uso', 'presentacion', 'cantidades',
+          'precio-mercado', 'precio-calidad', 'preventa', 'call-center',
+          'entrega', 'cobro', 'disconformidades', 'devolucion'
+        ])
+        && answers.keys().hasAll([
+          'variedad', 'uso', 'presentacion', 'cantidades',
+          'precio-mercado', 'precio-calidad', 'preventa', 'call-center',
+          'entrega', 'cobro', 'disconformidades', 'devolucion'
+        ])
+        && isValidAnswer(answers.variedad)
+        && isValidAnswer(answers.uso)
+        && isValidAnswer(answers.presentacion)
+        && isValidAnswer(answers.cantidades)
+        && isValidAnswer(answers['precio-mercado'])
+        && isValidAnswer(answers['precio-calidad'])
+        && isValidAnswer(answers.preventa)
+        && isValidAnswer(answers['call-center'])
+        && isValidAnswer(answers.entrega)
+        && isValidAnswer(answers.cobro)
+        && isValidAnswer(answers.disconformidades)
+        && isValidAnswer(answers.devolucion);
+    }
+
+    match /encuestas_satisfaccion/{encuestaId} {
+      allow create: if request.resource.data.keys().hasOnly([
+        'answers', 'comment', 'submittedAt', 'source'
+      ])
+      && hasValidAnswers(request.resource.data.answers)
+      && request.resource.data.comment is string
+      && request.resource.data.comment.size() <= 500
+      && request.resource.data.submittedAt == request.time
+      && request.resource.data.source == 'encuesta-satisfaccion-web';
+
+      allow read, update, delete: if false;
+    }
+
+    match /configuracion/{documento} {
+      allow read: if documento == 'encuesta_actual';
+      allow write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
