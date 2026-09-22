@@ -33,10 +33,23 @@ service cloud.firestore {
         && isValidAnswer(answers.devolucion);
     }
 
+    function isValidAdvisor(value) {
+      return value is string
+        && value in [
+          'Alonso Jimenez', 'Aaron Soto', 'Jordan Chacón', 'Julián Salazar',
+          'Nelson Mora', 'Diego Segura', 'Stephanie Gonzales', 'Emanuel Bustos'
+        ];
+    }
+
     match /encuestas_satisfaccion/{encuestaId} {
+      // El ID del documento es el código único de la encuesta; como update está
+      // prohibido, un código repetido no puede sobrescribir una respuesta existente.
       allow create: if request.resource.data.keys().hasOnly([
-        'name', 'answers', 'comment', 'submittedAt', 'source'
+        'code', 'name', 'advisor', 'answers', 'comment', 'submittedAt', 'source'
       ])
+      && encuestaId.matches('^EB-[A-HJ-NP-Z2-9]{8}$')
+      && request.resource.data.code == encuestaId
+      && isValidAdvisor(request.resource.data.advisor)
       && request.resource.data.name is string
       && request.resource.data.name.size() >= 2
       && request.resource.data.name.size() <= 120

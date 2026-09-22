@@ -39,6 +39,7 @@ async function main() {
     margenError: 0.05,
     nivelConfianza: 0.95,
     preguntas: questions,
+    asesores: ['Alonso Jimenez', 'Aaron Soto', 'Jordan Chacón', 'Julián Salazar', 'Nelson Mora', 'Diego Segura', 'Stephanie Gonzales', 'Emanuel Bustos'],
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true })
 
@@ -46,7 +47,9 @@ async function main() {
   batch.set(schemaRef, {
     coleccion: 'encuestas_satisfaccion',
     campos: {
-      name: 'Nombre de la persona participante, máximo 120 caracteres',
+      code: 'Código único de la encuesta (EB-XXXXXXXX), igual al ID del documento',
+      name: 'Nombre a quien se factura, máximo 120 caracteres',
+      advisor: 'Asesor que atiende al cliente, de la lista configurada',
       answers: 'Mapa con 12 respuestas de escala',
       comment: 'Comentario opcional, máximo 500 caracteres',
       submittedAt: 'Marca de tiempo del servidor',
