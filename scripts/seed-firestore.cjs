@@ -46,6 +46,7 @@ async function main() {
   batch.set(schemaRef, {
     coleccion: 'encuestas_satisfaccion',
     campos: {
+      name: 'Nombre de la persona participante, máximo 120 caracteres',
       answers: 'Mapa con 12 respuestas de escala',
       comment: 'Comentario opcional, máximo 500 caracteres',
       submittedAt: 'Marca de tiempo del servidor',

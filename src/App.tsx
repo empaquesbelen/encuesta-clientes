@@ -40,13 +40,15 @@ const auth = firebaseApp ? getAuth(firebaseApp) : null
 
 type SurveyResponse = {
   id: string
+  name: string
   answers: Record<string, Answer>
   comment: string
   submittedAt?: { toDate: () => Date }
 }
 
-async function saveResponse(answers: Record<string, Answer>, comment: string) {
+async function saveResponse(name: string, answers: Record<string, Answer>, comment: string) {
   const payload = {
+    name: name.trim(),
     answers,
     comment: comment.trim(),
     submittedAt: serverTimestamp(),
@@ -115,13 +117,15 @@ function AdminPage() {
     return <main className="admin-shell"><header className="brand-header"><img src="/logo.webp" alt="Empaques Belén" /></header><section className="admin-login"><span className="admin-kicker">Panel de administración</span><h1>Respuestas de clientes</h1><p>Ingresa con una cuenta autorizada para consultar la encuesta.</p><form onSubmit={login}><label htmlFor="admin-email">Correo electrónico</label><input id="admin-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" /><label htmlFor="admin-password">Contraseña</label><input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /><button className="next-button" type="submit">Ingresar <ArrowRight size={17} /></button></form>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}</section></main>
   }
 
-  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><strong>Encuesta #{responses.length - index}</strong><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.category} · {question.id}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
+  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><div><strong>Encuesta #{responses.length - index}</strong><span className="respondent-name">{response.name || 'Nombre pendiente'}</span></div><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.category} · {question.id}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
 }
 
 function App() {
   if (window.location.pathname === '/admin') return <AdminPage />
 
   const [current, setCurrent] = useState(0)
+  const [customerName, setCustomerName] = useState('')
+  const [started, setStarted] = useState(false)
   const [answers, setAnswers] = useState<Record<string, Answer>>({})
   const [comment, setComment] = useState('')
   const [consent, setConsent] = useState(false)
@@ -133,6 +137,15 @@ function App() {
   const selected = answers[question.id]
   const isLast = current === questions.length - 1
   const progress = Math.round(((current + 1) / questions.length) * 100)
+
+  function startSurvey() {
+    if (customerName.trim().length < 2) {
+      setError('Escribe tu nombre para continuar.')
+      return
+    }
+    setError('')
+    setStarted(true)
+  }
 
   function chooseAnswer(answer: Answer) {
     setAnswers((previous) => ({ ...previous, [question.id]: answer }))
@@ -161,7 +174,7 @@ function App() {
     setIsSaving(true)
     setError('')
     try {
-      await saveResponse(answers, comment)
+      await saveResponse(customerName, answers, comment)
       setSubmitted(true)
     } catch {
       setError('No pudimos enviar tus respuestas. Revisa tu conexión e inténtalo de nuevo.')
@@ -193,13 +206,10 @@ function App() {
         <section className="intro-copy">
           <div className="eyebrow"><span className="eyebrow-mark" /> Encuesta de satisfacción 2026</div>
           <h1>Tu opinión<br /><em>cuenta.</em></h1>
-          <p>Queremos conocer tu experiencia para seguir entregando productos y servicio a la altura de tu negocio.</p>
+          <p>Solo te tomará 2 minutos. Participa y recibe un cupón para la rifa entre quienes respondan.</p>
         </section>
         <section className="survey-panel" aria-label="Encuesta de satisfacción">
-          <div className="survey-topline"><span>Pregunta {current + 1} de {questions.length}</span><strong>{progress}%</strong></div>
-          <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
-          <div className="question-heading"><span className="category-label">{question.category}</span><h2>{question.title}</h2></div>
-          <div className="scale-list" role="radiogroup" aria-label="Escala de satisfacción">
+          {!started ? <div className="welcome-step"><div className="survey-topline"><span>Antes de comenzar</span><strong>2 min</strong></div><div className="question-heading"><span className="category-label">Participa en la rifa</span><h2>¿Cuál es tu nombre?</h2></div><p className="step-copy">Lo usaremos para identificar tu participación en el sorteo.</p><label className="field-label" htmlFor="customer-name">Nombre completo</label><input className="text-input" id="customer-name" value={customerName} onChange={(event) => { setCustomerName(event.target.value); setError('') }} maxLength={120} autoComplete="name" placeholder="Escribe tu nombre" /><div className="survey-actions"><button className="next-button" onClick={startSurvey}>Comenzar <ArrowRight size={17} /></button></div></div> : <><div className="survey-topline"><span>Pregunta {current + 1} de {questions.length}</span><strong>{progress}%</strong></div><div className="progress-track"><span style={{ width: `${progress}%` }} /></div><div className="question-heading"><span className="category-label">{question.category}</span><h2>{question.title}</h2></div><div className="scale-list" role="radiogroup" aria-label="Escala de satisfacción">
             {scale.map((option, index) => (
               <button key={option} className={`scale-option ${selected === option ? 'selected' : ''}`} onClick={() => chooseAnswer(option)} role="radio" aria-checked={selected === option}>
                 <span className="scale-number">{index + 1}</span><span>{option}</span>{selected === option && <Check size={17} />}
@@ -211,11 +221,11 @@ function App() {
             <textarea id="comment" maxLength={500} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Cuéntanos lo que quieras compartir..." />
             <label className="consent-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>Autorizo el uso confidencial de mis respuestas para fines internos de mejora.</span></label>
           </div>}
-          {error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}
           <div className="survey-actions">
             {current > 0 && <button className="back-button" onClick={() => setCurrent((value) => value - 1)}><ArrowLeft size={17} /> Atrás</button>}
             {!isLast ? <button className="next-button" onClick={goNext}>Siguiente <ArrowRight size={17} /></button> : <button className="next-button" onClick={submit} disabled={isSaving}>{isSaving ? 'Enviando...' : <>Enviar encuesta <Send size={16} /></>}</button>}
-          </div>
+          </div></>}
+          {error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}
         </section>
       </div>
       <footer className="page-footer"><span>Empaques Belén S.A.</span></footer>

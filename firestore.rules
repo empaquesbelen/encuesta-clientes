@@ -35,8 +35,11 @@ service cloud.firestore {
 
     match /encuestas_satisfaccion/{encuestaId} {
       allow create: if request.resource.data.keys().hasOnly([
-        'answers', 'comment', 'submittedAt', 'source'
+        'name', 'answers', 'comment', 'submittedAt', 'source'
       ])
+      && request.resource.data.name is string
+      && request.resource.data.name.size() >= 2
+      && request.resource.data.name.size() <= 120
       && hasValidAnswers(request.resource.data.answers)
       && request.resource.data.comment is string
       && request.resource.data.comment.size() <= 500

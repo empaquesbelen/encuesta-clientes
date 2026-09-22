@@ -48,6 +48,12 @@ textarea::placeholder { color: #a9afb9; }
 .next-button:disabled { opacity: .65; cursor: wait; }
 .page-footer { margin-top: auto; border-top: 1px solid #dfe3e4; padding-top: 18px; color: #8a929d; font-size: 11px; display: flex; justify-content: space-between; gap: 15px; }
 .page-footer span:first-child { display: flex; gap: 6px; align-items: center; }
+.welcome-step .survey-topline { margin-bottom: 35px; }
+.step-copy { color: #697386; font-size: 13px; line-height: 1.5; margin: -9px 0 24px; }
+.field-label { display: block; color: #42506a; font-size: 13px; font-weight: 700; margin-bottom: 9px; }
+.text-input { width: 100%; border: 1px solid #e2e6ec; border-radius: 5px; padding: 12px 13px; color: #1e2c4d; outline: none; }
+.text-input:focus { border-color: #223b8f; box-shadow: 0 0 0 3px rgba(34,59,143,.1); }
+.respondent-name { display: block; color: #34415b; font-size: 13px; font-weight: 600; margin-top: 6px; }
 .success-shell { align-items: stretch; }
 .success-card { width: min(550px, 100%); margin: auto; text-align: center; background: #fff; border: 1px solid #e6e9ed; border-radius: 8px; padding: 50px clamp(24px, 6vw, 70px); box-shadow: 0 22px 60px rgba(32, 48, 90, .09); }
 .success-icon { margin: 0 auto 25px; width: 60px; height: 60px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: #e46c22; }
