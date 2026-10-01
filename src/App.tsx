@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, LogOut, RefreshCw, Send, Sparkles } from 'lucide-react'
-import { collection, doc, getDocs, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { ArrowLeft, ArrowRight, Check, CircleHelp, Copy, LogOut, RefreshCw, Search, Send, Sparkles, UserRound } from 'lucide-react'
+import { collection, doc, getDoc, getDocs, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
 import { initializeApp } from 'firebase/app'
 
@@ -24,20 +24,25 @@ const questions: Question[] = [
   { id: 'devolucion', category: 'Servicio', title: '¿Qué tan satisfecho está con nuestra política de devolución de mercadería?', short: 'Política de devolución de mercadería' },
 ]
 
-const groups = [
+const sections = [
   { category: 'Producto', heading: '¿Qué tan satisfecho está con nuestros productos?' },
   { category: 'Precio', heading: '¿Cómo evalúa nuestros precios?' },
   { category: 'Servicio', heading: '¿Cómo califica nuestro servicio?' },
-].map((group) => ({ ...group, items: questions.filter((question) => question.category === group.category) }))
+].map((section) => ({ ...section, items: questions.filter((question) => question.category === section.category) }))
 
-const advisors = ['Alonso Jimenez', 'Aaron Soto', 'Jordan Chacón', 'Julián Salazar', 'Nelson Mora', 'Diego Segura', 'Stephanie Gonzales', 'Emanuel Bustos'] as const
-
-const totalSteps = groups.length + 1
+// Las tres secciones de preguntas más el cierre (comentario y envío).
+const totalSteps = sections.length + 1
 const codeAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 
 function generateSurveyCode() {
   const bytes = crypto.getRandomValues(new Uint8Array(8))
   return `EB-${Array.from(bytes, (byte) => codeAlphabet[byte % codeAlphabet.length]).join('')}`
+}
+
+// La cédula es el ID del documento del cliente, así que se compara siempre sin espacios,
+// guiones ni puntos y en mayúsculas, igual que en scripts/seed-clientes.cjs.
+function normalizeId(value: string) {
+  return value.replace(/[^0-9a-zA-Z]/g, '').toUpperCase()
 }
 
 const firebaseConfig = {
@@ -54,23 +59,43 @@ const firebaseApp = hasFirebaseConfig ? initializeApp(firebaseConfig) : null
 const database = firebaseApp ? getFirestore(firebaseApp) : null
 const auth = firebaseApp ? getAuth(firebaseApp) : null
 
+type Client = { cedula: string; nombre: string; vendedor: string; codigo?: string }
+
 type SurveyResponse = {
   id: string
   name: string
   code?: string
+  cedula?: string
   advisor?: string
   answers: Record<string, Answer>
   comment: string
   submittedAt?: { toDate: () => Date }
 }
 
-async function saveResponse(name: string, answers: Record<string, Answer>, comment: string, advisor: string) {
-  // El código es también el ID del documento: las reglas impiden sobrescribir uno existente, lo que garantiza unicidad.
+async function findClient(cedula: string): Promise<Client | null> {
+  const id = normalizeId(cedula)
+  if (id.length < 5) return null
+
+  if (!database) {
+    // Sin configuración de Firebase (desarrollo local) se simula un cliente para poder probar el flujo.
+    return { cedula: id, nombre: 'Cliente de prueba', vendedor: 'Vendedor de prueba' }
+  }
+
+  const snapshot = await getDoc(doc(database, 'clientes', id))
+  if (!snapshot.exists()) return null
+  const data = snapshot.data() as Partial<Client>
+  return { cedula: data.cedula ?? id, nombre: data.nombre ?? '', vendedor: data.vendedor ?? '', codigo: data.codigo }
+}
+
+async function saveResponse(client: Client, answers: Record<string, Answer>, comment: string) {
+  // El código es también el ID del documento: como las reglas prohíben update, un código
+  // repetido no podría sobrescribir otra respuesta. Un mismo cliente puede enviar varias.
   const code = generateSurveyCode()
   const payload = {
     code,
-    name: name.trim(),
-    advisor,
+    cedula: normalizeId(client.cedula),
+    name: client.nombre,
+    advisor: client.vendedor,
     answers,
     comment: comment.trim(),
     submittedAt: serverTimestamp(),
@@ -142,35 +167,57 @@ function AdminPage() {
     return <main className="admin-shell"><header className="brand-header"><img src="/logo.webp" alt="Empaques Belén" /></header><section className="admin-login"><span className="admin-kicker">Panel de administración</span><h1>Respuestas de clientes</h1><p>Ingresa con una cuenta autorizada para consultar la encuesta.</p><form onSubmit={login}><label htmlFor="admin-email">Correo electrónico</label><input id="admin-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" /><label htmlFor="admin-password">Contraseña</label><input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /><button className="next-button" type="submit">Ingresar <ArrowRight size={17} /></button></form>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}</section></main>
   }
 
-  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><div><strong>Encuesta #{responses.length - index}{response.code && <span className="response-code">{response.code}</span>}</strong><span className="respondent-name">{response.name || 'Nombre pendiente'}</span><span className="respondent-advisor">Asesor: {response.advisor || 'No registrado'}</span></div><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.short}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
+  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><div><strong>Encuesta #{responses.length - index}{response.code && <span className="response-code">{response.code}</span>}</strong><span className="respondent-name">{response.name || 'Nombre pendiente'}</span><span className="respondent-advisor">Cédula: {response.cedula || 'No registrada'} · Vendedor: {response.advisor || 'No registrado'}</span></div><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.short}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
 }
 
 function App() {
   if (window.location.pathname === '/admin') return <AdminPage />
 
   const [current, setCurrent] = useState(0)
-  const [customerName, setCustomerName] = useState('')
+  const [cedula, setCedula] = useState('')
+  const [client, setClient] = useState<Client | null>(null)
+  const [isSearching, setIsSearching] = useState(false)
   const [started, setStarted] = useState(false)
   const [answers, setAnswers] = useState<Record<string, Answer>>({})
   const [missing, setMissing] = useState<string[]>([])
-  const [advisor, setAdvisor] = useState('')
   const [comment, setComment] = useState('')
   const [consent, setConsent] = useState(false)
   const [surveyCode, setSurveyCode] = useState('')
+  const [copied, setCopied] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState('')
+  const codeRef = useRef<HTMLElement>(null)
 
   const isLast = current === totalSteps - 1
-  const group = isLast ? null : groups[current]
+  const section = isLast ? null : sections[current]
   const progress = Math.round(((current + 1) / totalSteps) * 100)
 
-  function startSurvey() {
-    if (customerName.trim().length < 2) {
-      setError('Escribe el nombre a quien facturas para continuar.')
+  async function searchClient() {
+    if (normalizeId(cedula).length < 5) {
+      setError('Escribe la cédula con la que facturas.')
       return
     }
+    setIsSearching(true)
     setError('')
-    setStarted(true)
+    setClient(null)
+    try {
+      const found = await findClient(cedula)
+      if (found) {
+        setClient(found)
+      } else {
+        setError('No encontramos esa cédula en nuestra base de clientes. Revisa el número o consulta con tu vendedor.')
+      }
+    } catch {
+      setError('No pudimos consultar la cédula. Revisa tu conexión e inténtalo de nuevo.')
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  function changeCedula(value: string) {
+    setCedula(value)
+    setClient(null)
+    setError('')
   }
 
   function chooseAnswer(questionId: string, answer: Answer) {
@@ -180,8 +227,8 @@ function App() {
   }
 
   function goNext() {
-    if (!group) return
-    const pending = group.items.filter((question) => !answers[question.id]).map((question) => question.id)
+    if (!section) return
+    const pending = section.items.filter((question) => !answers[question.id]).map((question) => question.id)
     if (pending.length > 0) {
       setMissing(pending)
       setError(pending.length === 1 ? 'Falta una pregunta por responder.' : `Faltan ${pending.length} preguntas por responder.`)
@@ -201,8 +248,8 @@ function App() {
   }
 
   async function submit() {
-    if (!advisor) {
-      setError('Selecciona el asesor que te atiende.')
+    if (!client) {
+      setError('No encontramos tus datos de cliente. Vuelve a ingresar tu cédula.')
       return
     }
     if (!consent) {
@@ -213,13 +260,42 @@ function App() {
     setIsSaving(true)
     setError('')
     try {
-      setSurveyCode(await saveResponse(customerName, answers, comment, advisor))
+      setSurveyCode(await saveResponse(client, answers, comment))
     } catch {
       setError('No pudimos enviar tus respuestas. Revisa tu conexión e inténtalo de nuevo.')
     } finally {
       setIsSaving(false)
     }
   }
+
+  async function copyCode() {
+    try {
+      await navigator.clipboard.writeText(surveyCode)
+      setCopied(true)
+    } catch {
+      // Navegadores sin permiso de portapapeles: se selecciona el código para copiarlo a mano.
+      const node = codeRef.current
+      if (!node) return
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      setCopied(document.execCommand('copy'))
+    }
+  }
+
+  // Al marcar preguntas sin responder hay que esperar al render para poder llevar la vista hasta la primera.
+  useEffect(() => {
+    if (missing.length === 0) return
+    document.querySelector('.question-block.missing')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [missing])
+
+  useEffect(() => {
+    if (!copied) return
+    const timer = setTimeout(() => setCopied(false), 2500)
+    return () => clearTimeout(timer)
+  }, [copied])
 
   if (surveyCode) {
     return (
@@ -230,8 +306,12 @@ function App() {
           <p className="eyebrow">Encuesta recibida</p>
           <h1>Gracias por ayudarnos a mejorar.</h1>
           <p className="success-copy">Tus respuestas fueron recibidas correctamente.</p>
-          <div className="survey-code"><span>Tu código de participación</span><strong>{surveyCode}</strong><small>Guárdalo o tómale una captura de pantalla.</small></div>
-          <div className="coupon-note"><Sparkles size={18} /><span>Tu ejecutivo de ventas te entregará un cupón para participar en la rifa. Muéstrale este código para validarlo.</span></div>
+          <div className="survey-code">
+            <span>Tu código de participación</span>
+            <strong ref={codeRef}>{surveyCode}</strong>
+            <button className="copy-button" onClick={() => void copyCode()}>{copied ? <><Check size={15} /> Código copiado</> : <><Copy size={15} /> Copiar código</>}</button>
+          </div>
+          <div className="coupon-note"><Sparkles size={18} /><span>Cada encuesta enviada genera su propio código. Guárdalo y muéstraselo a tu vendedor: con él se identifica a la persona ganadora de la rifa.</span></div>
         </section>
         <footer className="page-footer">Empaques Belén S.A. · Tu experiencia nos importa</footer>
       </main>
@@ -252,36 +332,48 @@ function App() {
           {!started ? (
             <div className="welcome-step">
               <div className="survey-topline"><span>Antes de comenzar</span><strong>2 min</strong></div>
-              <div className="question-heading"><span className="category-label">Participa en la rifa</span><h2>¿A nombre de quién facturas?</h2></div>
-              <p className="step-copy">Lo usaremos para identificar tu participación en el sorteo.</p>
-              <label className="field-label" htmlFor="customer-name">Nombre a quien facturas</label>
-              <input className="text-input" id="customer-name" value={customerName} onChange={(event) => { setCustomerName(event.target.value); setError('') }} maxLength={120} autoComplete="organization" placeholder="Nombre de la persona o empresa" />
-              <div className="survey-actions"><button className="next-button" onClick={startSurvey}>Comenzar <ArrowRight size={17} /></button></div>
+              <div className="question-heading"><span className="category-label">Identifícate</span><h2>¿Con cuál cédula facturas?</h2></div>
+              <p className="step-copy">Con tu cédula encontramos tus datos de cliente. No tienes que escribir tu nombre ni tu vendedor.</p>
+              <label className="field-label" htmlFor="cedula">Cédula de facturación</label>
+              <div className="search-row">
+                <input className="text-input" id="cedula" value={cedula} onChange={(event) => changeCedula(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void searchClient() }} maxLength={30} inputMode="text" autoComplete="off" placeholder="Ejemplo: 3101054071" />
+                <button className="search-button" onClick={() => void searchClient()} disabled={isSearching}><Search size={16} /> {isSearching ? 'Buscando...' : 'Buscar'}</button>
+              </div>
+              {client && (
+                <div className="client-card" aria-live="polite">
+                  <div className="client-icon"><UserRound size={18} /></div>
+                  <div>
+                    <span>Cliente</span>
+                    <strong>{client.nombre}</strong>
+                    <span className="client-advisor">Vendedor asignado: <strong>{client.vendedor}</strong></span>
+                  </div>
+                </div>
+              )}
+              <div className="survey-actions">
+                <button className="next-button" onClick={() => { setStarted(true); setError('') }} disabled={!client}>Continuar <ArrowRight size={17} /></button>
+              </div>
             </div>
           ) : (
             <>
-              <div className="survey-topline"><span>Paso {current + 1} de {totalSteps}</span><strong>{progress}%</strong></div>
+              <div className="survey-topline"><span>Sección {current + 1} de {totalSteps}</span><strong>{progress}%</strong></div>
               <div className="progress-track"><span style={{ width: `${progress}%` }} /></div>
-              {group ? (
+              {section ? (
                 <>
                   <div className="question-heading">
-                    <span className="category-label">{group.category} · {group.items.length} preguntas</span>
-                    <h2>{group.heading}</h2>
+                    <span className="category-label">{section.category} · {section.items.length} preguntas</span>
+                    <h2>{section.heading}</h2>
                   </div>
-                  <div className="scale-legend"><span>1 · Malo</span><span>5 · Excelente</span></div>
-                  <div className="matrix-list">
-                    {group.items.map((question) => {
+                  <div className="question-list">
+                    {section.items.map((question, index) => {
                       const selected = answers[question.id]
                       return (
-                        <div className={`matrix-item ${missing.includes(question.id) ? 'missing' : ''}`} key={question.id}>
-                          <div className="matrix-head">
-                            <span className="matrix-label" id={`label-${question.id}`}>{question.short}</span>
-                            <span className="matrix-value">{selected ?? ''}</span>
-                          </div>
-                          <div className="chip-row" role="radiogroup" aria-labelledby={`label-${question.id}`}>
-                            {scale.map((option, index) => (
-                              <button key={option} className={`chip ${selected === option ? 'selected' : ''}`} onClick={() => chooseAnswer(question.id, option)} role="radio" aria-checked={selected === option} aria-label={`${index + 1} · ${option}`} title={option}>
-                                {index + 1}
+                        <div className={`question-block ${missing.includes(question.id) ? 'missing' : ''}`} key={question.id}>
+                          <div className="question-number">Pregunta {index + 1} de {section.items.length}</div>
+                          <p className="question-text" id={`label-${question.id}`}>{question.title}</p>
+                          <div className="scale-row" role="radiogroup" aria-labelledby={`label-${question.id}`}>
+                            {scale.map((option) => (
+                              <button key={option} className={`scale-chip ${selected === option ? 'selected' : ''}`} onClick={() => chooseAnswer(question.id, option)} role="radio" aria-checked={selected === option}>
+                                {option}
                               </button>
                             ))}
                           </div>
@@ -292,16 +384,10 @@ function App() {
                 </>
               ) : (
                 <>
-                  <div className="question-heading"><span className="category-label">Último paso</span><h2>¿Cuál es el nombre del asesor que le atiende?</h2></div>
-                  <div className="select-wrap">
-                    <select className={`text-input advisor-select ${advisor ? '' : 'is-empty'}`} id="advisor" aria-label="Asesor que le atiende" value={advisor} onChange={(event) => { setAdvisor(event.target.value); setError('') }}>
-                      <option value="" disabled>Selecciona un asesor</option>
-                      {advisors.map((name) => <option key={name} value={name}>{name}</option>)}
-                    </select>
-                    <ChevronDown size={17} />
-                  </div>
+                  <div className="question-heading"><span className="category-label">Último paso</span><h2>¿Hay algo más que quieras contarnos?</h2></div>
+                  {client && <p className="step-copy">Respondes como <strong>{client.nombre}</strong> · Vendedor: {client.vendedor}</p>}
                   <div className="last-step-fields">
-                    <label htmlFor="comment">¿Hay algún comentario que nos ayude a mejorar? <span>Opcional</span></label>
+                    <label htmlFor="comment">Comentario para ayudarnos a mejorar <span>Opcional</span></label>
                     <textarea id="comment" maxLength={500} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Cuéntanos lo que quieras compartir..." />
                     <label className="consent-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>Autorizo el uso confidencial de mis respuestas para fines internos de mejora.</span></label>
                   </div>

@@ -33,26 +33,41 @@ service cloud.firestore {
         && isValidAnswer(answers.devolucion);
     }
 
-    function isValidAdvisor(value) {
-      return value is string
-        && value in [
-          'Alonso Jimenez', 'Aaron Soto', 'Jordan Chacón', 'Julián Salazar',
-          'Nelson Mora', 'Diego Segura', 'Stephanie Gonzales', 'Emanuel Bustos'
-        ];
+    function clienteDe(cedula) {
+      return get(/databases/$(database)/documents/clientes/$(cedula)).data;
+    }
+
+    // El nombre y el vendedor no los escribe la persona: deben coincidir con la ficha
+    // del cliente que ya está cargada desde el Excel de la empresa.
+    function coincideConElCliente(data) {
+      return data.cedula is string
+        && data.cedula.matches('^[0-9A-Z]{5,30}$')
+        && exists(/databases/$(database)/documents/clientes/$(data.cedula))
+        && data.name == clienteDe(data.cedula).nombre
+        && data.advisor == clienteDe(data.cedula).vendedor;
+    }
+
+    match /clientes/{cedula} {
+      // Lectura de una ficha puntual: hay que saber la cédula exacta.
+      // Listar la colección completa queda solo para cuentas autenticadas.
+      allow get: if true;
+      allow list: if request.auth != null;
+      allow write: if false;
     }
 
     match /encuestas_satisfaccion/{encuestaId} {
       // El ID del documento es el código único de la encuesta; como update está
       // prohibido, un código repetido no puede sobrescribir una respuesta existente.
+      // Un mismo cliente sí puede enviar varias respuestas, cada una con su código.
       allow create: if request.resource.data.keys().hasOnly([
-        'code', 'name', 'advisor', 'answers', 'comment', 'submittedAt', 'source'
+        'code', 'cedula', 'name', 'advisor', 'answers', 'comment', 'submittedAt', 'source'
       ])
       && encuestaId.matches('^EB-[A-HJ-NP-Z2-9]{8}$')
       && request.resource.data.code == encuestaId
-      && isValidAdvisor(request.resource.data.advisor)
+      && coincideConElCliente(request.resource.data)
       && request.resource.data.name is string
       && request.resource.data.name.size() >= 2
-      && request.resource.data.name.size() <= 120
+      && request.resource.data.name.size() <= 150
       && hasValidAnswers(request.resource.data.answers)
       && request.resource.data.comment is string
       && request.resource.data.comment.size() <= 500

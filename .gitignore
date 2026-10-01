@@ -4,3 +4,6 @@ dist/
 .env.*
 !.env.example
 encuesta-satisfaccion-*-firebase-adminsdk-*.json
+# Base de clientes con datos personales: se mantiene fuera del repositorio.
+Cliente.xlsx
+*.xlsx

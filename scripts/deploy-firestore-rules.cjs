@@ -29,14 +29,17 @@ async function main() {
   const ruleset = await rulesetResponse.json()
   if (!rulesetResponse.ok) throw new Error(JSON.stringify(ruleset))
 
-  const releaseResponse = await fetch(`https://firebaserules.googleapis.com/v1/projects/${projectId}/releases`, {
-    method: 'POST',
+  // La publicación `cloud.firestore` ya existe, así que se actualiza (PATCH).
+  // Crearla de nuevo exigiría el permiso firebaserules.releases.create, que no hace falta aquí.
+  const releaseName = `projects/${projectId}/releases/cloud.firestore`
+  const releaseResponse = await fetch(`https://firebaserules.googleapis.com/v1/${releaseName}`, {
+    method: 'PATCH',
     headers,
-    body: JSON.stringify({ name: `projects/${projectId}/releases/cloud.firestore`, rulesetName: ruleset.name }),
+    body: JSON.stringify({ release: { name: releaseName, rulesetName: ruleset.name }, updateMask: 'rulesetName' }),
   })
   const release = await releaseResponse.json()
   if (!releaseResponse.ok) throw new Error(JSON.stringify(release))
-  console.log(`Rules publicadas: ${release.name}`)
+  console.log(`Rules publicadas: ${release.name} (${release.rulesetName})`)
 }
 
 main().catch((error) => {

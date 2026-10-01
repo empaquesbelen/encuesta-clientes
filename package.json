@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "seed:firestore": "node scripts/seed-firestore.cjs",
+    "seed:clientes": "node scripts/seed-clientes.cjs",
     "deploy:firestore-rules": "node scripts/deploy-firestore-rules.cjs"
   },
   "dependencies": {
@@ -20,6 +21,7 @@
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.2",
+    "exceljs": "^4.4.0",
     "firebase-admin": "^13.5.0",
     "firebase-tools": "^15.30.2",
     "typescript": "~5.8.3",
