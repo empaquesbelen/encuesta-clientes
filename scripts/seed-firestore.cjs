@@ -51,6 +51,7 @@ async function main() {
       cedula: 'Cédula de facturación normalizada, ID del documento en la colección clientes',
       name: 'Nombre del cliente, tomado de su ficha en clientes',
       advisor: 'Vendedor asignado, tomado de su ficha en clientes',
+      respondent: 'Nombre de la persona que responde bajo esa cédula, entre 3 y 80 caracteres',
       answers: 'Mapa con 12 respuestas de escala',
       comment: 'Comentario opcional, máximo 500 caracteres',
       submittedAt: 'Marca de tiempo del servidor',

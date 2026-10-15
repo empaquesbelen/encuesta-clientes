@@ -67,6 +67,8 @@ type SurveyResponse = {
   code?: string
   cedula?: string
   advisor?: string
+  // Persona que respondió: varias personas pueden responder bajo la misma cédula.
+  respondent?: string
   answers: Record<string, Answer>
   comment: string
   submittedAt?: { toDate: () => Date }
@@ -87,7 +89,7 @@ async function findClient(cedula: string): Promise<Client | null> {
   return { cedula: data.cedula ?? id, nombre: data.nombre ?? '', vendedor: data.vendedor ?? '', codigo: data.codigo }
 }
 
-async function saveResponse(client: Client, answers: Record<string, Answer>, comment: string) {
+async function saveResponse(client: Client, answers: Record<string, Answer>, comment: string, respondent: string) {
   // El código es también el ID del documento: como las reglas prohíben update, un código
   // repetido no podría sobrescribir otra respuesta. Un mismo cliente puede enviar varias.
   const code = generateSurveyCode()
@@ -96,6 +98,7 @@ async function saveResponse(client: Client, answers: Record<string, Answer>, com
     cedula: normalizeId(client.cedula),
     name: client.nombre,
     advisor: client.vendedor,
+    respondent: respondent.trim(),
     answers,
     comment: comment.trim(),
     submittedAt: serverTimestamp(),
@@ -167,7 +170,7 @@ function AdminPage() {
     return <main className="admin-shell"><header className="brand-header"><img src="/logo.webp" alt="Empaques Belén" /></header><section className="admin-login"><span className="admin-kicker">Panel de administración</span><h1>Respuestas de clientes</h1><p>Ingresa con una cuenta autorizada para consultar la encuesta.</p><form onSubmit={login}><label htmlFor="admin-email">Correo electrónico</label><input id="admin-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" /><label htmlFor="admin-password">Contraseña</label><input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /><button className="next-button" type="submit">Ingresar <ArrowRight size={17} /></button></form>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}</section></main>
   }
 
-  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><div><strong>Encuesta #{responses.length - index}{response.code && <span className="response-code">{response.code}</span>}</strong><span className="respondent-name">{response.name || 'Nombre pendiente'}</span><span className="respondent-advisor">Cédula: {response.cedula || 'No registrada'} · Vendedor: {response.advisor || 'No registrado'}</span></div><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.short}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
+  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><div><strong>Encuesta #{responses.length - index}{response.code && <span className="response-code">{response.code}</span>}</strong><span className="respondent-name">{response.name || 'Nombre pendiente'}</span><span className="respondent-advisor">Respondió: {response.respondent || 'No registrado'}</span><span className="respondent-advisor">Cédula: {response.cedula || 'No registrada'} · Vendedor: {response.advisor || 'No registrado'}</span></div><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.short}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
 }
 
 function App() {
@@ -180,6 +183,7 @@ function App() {
   const [started, setStarted] = useState(false)
   const [answers, setAnswers] = useState<Record<string, Answer>>({})
   const [missing, setMissing] = useState<string[]>([])
+  const [respondent, setRespondent] = useState('')
   const [comment, setComment] = useState('')
   const [consent, setConsent] = useState(false)
   const [surveyCode, setSurveyCode] = useState('')
@@ -252,6 +256,11 @@ function App() {
       setError('No encontramos tus datos de cliente. Vuelve a ingresar tu cédula.')
       return
     }
+    if (respondent.trim().length < 3) {
+      setError('Escribe tu nombre para saber quién responde.')
+      document.getElementById('respondent')?.focus()
+      return
+    }
     if (!consent) {
       setError('Marca la casilla para continuar.')
       return
@@ -260,7 +269,7 @@ function App() {
     setIsSaving(true)
     setError('')
     try {
-      setSurveyCode(await saveResponse(client, answers, comment))
+      setSurveyCode(await saveResponse(client, answers, comment, respondent))
     } catch {
       setError('No pudimos enviar tus respuestas. Revisa tu conexión e inténtalo de nuevo.')
     } finally {
@@ -384,9 +393,12 @@ function App() {
                 </>
               ) : (
                 <>
-                  <div className="question-heading"><span className="category-label">Último paso</span><h2>¿Hay algo más que quieras contarnos?</h2></div>
-                  {client && <p className="step-copy">Respondes como <strong>{client.nombre}</strong> · Vendedor: {client.vendedor}</p>}
+                  <div className="question-heading"><span className="category-label">Último paso</span><h2>¿Quién nos responde?</h2></div>
+                  {client && <p className="step-copy">Respondes a nombre de <strong>{client.nombre}</strong> · Vendedor: {client.vendedor}</p>}
                   <div className="last-step-fields">
+                    <label htmlFor="respondent">Su nombre <span>Obligatorio</span></label>
+                    <input className="text-input" id="respondent" value={respondent} onChange={(event) => { setRespondent(event.target.value); setError('') }} maxLength={80} autoComplete="name" placeholder="Nombre de la persona que responde" />
+                    <p className="field-hint">Nos sirve para saber exactamente quién respondió bajo esta cédula.</p>
                     <label htmlFor="comment">Comentario para ayudarnos a mejorar <span>Opcional</span></label>
                     <textarea id="comment" maxLength={500} value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Cuéntanos lo que quieras compartir..." />
                     <label className="consent-check"><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /><span>Autorizo el uso confidencial de mis respuestas para fines internos de mejora.</span></label>

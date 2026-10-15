@@ -60,8 +60,11 @@ service cloud.firestore {
       // prohibido, un código repetido no puede sobrescribir una respuesta existente.
       // Un mismo cliente sí puede enviar varias respuestas, cada una con su código.
       allow create: if request.resource.data.keys().hasOnly([
-        'code', 'cedula', 'name', 'advisor', 'answers', 'comment', 'submittedAt', 'source'
+        'code', 'cedula', 'name', 'advisor', 'respondent', 'answers', 'comment', 'submittedAt', 'source'
       ])
+      && request.resource.data.respondent is string
+      && request.resource.data.respondent.size() >= 3
+      && request.resource.data.respondent.size() <= 80
       && encuestaId.matches('^EB-[A-HJ-NP-Z2-9]{8}$')
       && request.resource.data.code == encuestaId
       && coincideConElCliente(request.resource.data)

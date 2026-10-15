@@ -40,7 +40,7 @@ npm run seed:clientes
 
 1. **Identificación**: la persona escribe la cédula con la que factura. La aplicación busca esa ficha en `clientes` y muestra el nombre del cliente y su vendedor asignado; el botón *Continuar* permanece bloqueado hasta que haya coincidencia. Ni el nombre ni el vendedor se escriben a mano.
 2. **Tres secciones de preguntas** (Producto, Precio y Servicio) con las 12 preguntas completas. Cada pregunta se califica de forma cualitativa: *Malo, Regular, Bueno, Muy bueno, Excelente*. No se usan números en ninguna parte, ni en la pantalla ni en la base de datos.
-3. **Cierre**: comentario opcional y consentimiento.
+3. **Cierre**: el nombre de la persona que responde (obligatorio, porque varias personas pueden responder bajo la misma cédula), comentario opcional y consentimiento.
 4. **Código de participación**: cada envío genera un código único (`EB-XXXXXXXX`) que se muestra con un botón para copiarlo. Un mismo cliente puede responder varias veces (distintos departamentos o personas) y cada respuesta recibe su propio código, que es el que identifica a la persona ganadora de la rifa.
 
 ## Netlify
