@@ -60,4 +60,4 @@ Cada vez que cambien las preguntas, la escala o los campos guardados, hay que vo
 
 ## Panel administrativo
 
-El panel está disponible en `/admin`. Habilita el proveedor **Email/Password** en Firebase Authentication y crea allí las cuentas autorizadas. Después de iniciar sesión, cada usuario autenticado puede consultar las respuestas de `encuestas_satisfaccion` con su código, cédula, cliente y vendedor; el público no puede leerlas.
+El panel está disponible en `/admin`. Habilita el proveedor **Email/Password** en Firebase Authentication y crea allí las cuentas autorizadas. Después de iniciar sesión, cada usuario autenticado puede consultar las respuestas de `encuestas_satisfaccion` con su código, cédula, cliente y vendedor; el público no puede leerlas. El botón **Descargar Excel** genera un `.xlsx` con una fila por respuesta, datos del cliente y vendedor, las 12 valoraciones, comentario, fecha y origen. En las respuestas históricas, el código del cliente se consulta desde su ficha en `clientes` si todavía no estaba guardado en la respuesta.

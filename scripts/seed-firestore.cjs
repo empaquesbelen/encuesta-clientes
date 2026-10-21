@@ -49,6 +49,7 @@ async function main() {
     campos: {
       code: 'Código único de la encuesta (EB-XXXXXXXX), igual al ID del documento',
       cedula: 'Cédula de facturación normalizada, ID del documento en la colección clientes',
+      codigoCliente: 'Código del cliente, copiado desde su ficha en clientes',
       name: 'Nombre del cliente, tomado de su ficha en clientes',
       advisor: 'Vendedor asignado, tomado de su ficha en clientes',
       respondent: 'Nombre de la persona que responde bajo esa cédula, entre 3 y 80 caracteres',

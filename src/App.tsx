@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { ArrowLeft, ArrowRight, Check, CircleHelp, Copy, LogOut, RefreshCw, Search, Send, Sparkles, UserRound } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, CircleHelp, Copy, FileSpreadsheet, LogOut, RefreshCw, Search, Send, Sparkles, UserRound } from 'lucide-react'
 import { collection, doc, getDoc, getDocs, getFirestore, serverTimestamp, setDoc } from 'firebase/firestore'
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth'
 import { initializeApp } from 'firebase/app'
@@ -66,11 +66,13 @@ type SurveyResponse = {
   name: string
   code?: string
   cedula?: string
+  codigoCliente?: string
   advisor?: string
   // Persona que respondió: varias personas pueden responder bajo la misma cédula.
   respondent?: string
   answers: Record<string, Answer>
   comment: string
+  source?: string
   submittedAt?: { toDate: () => Date }
 }
 
@@ -96,6 +98,7 @@ async function saveResponse(client: Client, answers: Record<string, Answer>, com
   const payload = {
     code,
     cedula: normalizeId(client.cedula),
+    codigoCliente: client.codigo ?? '',
     name: client.nombre,
     advisor: client.vendedor,
     respondent: respondent.trim(),
@@ -121,6 +124,7 @@ function AdminPage() {
   const [password, setPassword] = useState('')
   const [responses, setResponses] = useState<SurveyResponse[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -151,6 +155,86 @@ function AdminPage() {
     if (user) void loadResponses()
   }, [user])
 
+  async function exportResponses() {
+    if (responses.length === 0) return
+    setIsExporting(true)
+    setError('')
+
+    try {
+      const ExcelJS = await import('exceljs')
+      const customerCodes = new Map<string, string>()
+      if (database && responses.some((response) => !response.codigoCliente && response.cedula)) {
+        const missingCodes = [...new Set(responses
+          .filter((response) => !response.codigoCliente && response.cedula)
+          .map((response) => normalizeId(response.cedula ?? '')))]
+        await Promise.all(missingCodes.map(async (cedula) => {
+          const clientSnapshot = await getDoc(doc(database, 'clientes', cedula))
+          const codigo = clientSnapshot.data()?.codigo
+          if (codigo) customerCodes.set(cedula, String(codigo))
+        }))
+      }
+
+      const workbook = new ExcelJS.Workbook()
+      workbook.creator = 'Empaques Belén'
+      workbook.created = new Date()
+      const worksheet = workbook.addWorksheet('Respuestas')
+      worksheet.columns = [
+        { header: 'N.º', key: 'number', width: 8 },
+        { header: 'Código de respuesta', key: 'responseCode', width: 22 },
+        { header: 'Fecha y hora', key: 'submittedAt', width: 22 },
+        { header: 'Código de cliente', key: 'customerCode', width: 20 },
+        { header: 'Cédula del cliente', key: 'cedula', width: 20 },
+        { header: 'Nombre del cliente', key: 'customerName', width: 30 },
+        { header: 'Vendedor', key: 'seller', width: 26 },
+        { header: 'Persona que respondió', key: 'respondent', width: 28 },
+        ...questions.map((question) => ({ header: question.short, key: question.id, width: 34 })),
+        { header: 'Comentario', key: 'comment', width: 48 },
+        { header: 'Origen', key: 'source', width: 30 },
+      ]
+
+      responses.forEach((response, index) => {
+        worksheet.addRow({
+          number: index + 1,
+          responseCode: response.code ?? response.id,
+          submittedAt: response.submittedAt?.toDate() ?? null,
+          customerCode: response.codigoCliente || customerCodes.get(normalizeId(response.cedula ?? '')) || '',
+          cedula: response.cedula ?? '',
+          customerName: response.name ?? '',
+          seller: response.advisor ?? '',
+          respondent: response.respondent ?? '',
+          ...Object.fromEntries(questions.map((question) => [question.id, response.answers?.[question.id] ?? ''])),
+          comment: response.comment ?? '',
+          source: response.source ?? '',
+        })
+      })
+
+      const heading = worksheet.getRow(1)
+      heading.height = 34
+      heading.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+      heading.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF223B8F' } }
+      heading.alignment = { vertical: 'middle', wrapText: true }
+      worksheet.views = [{ state: 'frozen', ySplit: 1 }]
+      worksheet.autoFilter = { from: 'A1', to: worksheet.getRow(1).getCell(worksheet.columns.length).address }
+      worksheet.getColumn('submittedAt').numFmt = 'dd/mm/yyyy hh:mm'
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber > 1) row.alignment = { vertical: 'top', wrapText: true }
+      })
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `reporte-encuestas-${new Date().toISOString().slice(0, 10)}.xlsx`
+      link.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('No se pudo generar el Excel. Actualiza las respuestas e inténtalo de nuevo.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!auth) {
@@ -170,7 +254,7 @@ function AdminPage() {
     return <main className="admin-shell"><header className="brand-header"><img src="/logo.webp" alt="Empaques Belén" /></header><section className="admin-login"><span className="admin-kicker">Panel de administración</span><h1>Respuestas de clientes</h1><p>Ingresa con una cuenta autorizada para consultar la encuesta.</p><form onSubmit={login}><label htmlFor="admin-email">Correo electrónico</label><input id="admin-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" /><label htmlFor="admin-password">Contraseña</label><input id="admin-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required autoComplete="current-password" /><button className="next-button" type="submit">Ingresar <ArrowRight size={17} /></button></form>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}</section></main>
   }
 
-  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><div><strong>Encuesta #{responses.length - index}{response.code && <span className="response-code">{response.code}</span>}</strong><span className="respondent-name">{response.name || 'Nombre pendiente'}</span><span className="respondent-advisor">Respondió: {response.respondent || 'No registrado'}</span><span className="respondent-advisor">Cédula: {response.cedula || 'No registrada'} · Vendedor: {response.advisor || 'No registrado'}</span></div><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.short}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
+  return <main className="admin-shell"><header className="admin-header"><img src="/logo.webp" alt="Empaques Belén" /><div><span>{user.email}</span><button className="back-button" onClick={() => auth && void signOut(auth)}><LogOut size={16} /> Salir</button></div></header><section className="admin-content"><div className="admin-title-row"><div><span className="admin-kicker">Panel de administración</span><h1>Respuestas recibidas</h1><p>{responses.length} {responses.length === 1 ? 'respuesta' : 'respuestas'} registradas</p></div><div className="admin-actions"><button className="report-button" onClick={() => void exportResponses()} disabled={responses.length === 0 || isExporting}><FileSpreadsheet size={17} /> {isExporting ? 'Generando...' : 'Descargar Excel'}</button><button className="refresh-button" onClick={() => void loadResponses()} disabled={isLoading}><RefreshCw size={16} className={isLoading ? 'spin' : ''} /> Actualizar</button></div></div>{error && <p className="form-error" role="alert"><CircleHelp size={16} /> {error}</p>}<div className="response-list">{responses.length === 0 && !isLoading && <div className="empty-state">Todavía no hay respuestas registradas.</div>}{responses.map((response, index) => <article className="response-card" key={response.id}><div className="response-card-header"><div><strong>Encuesta #{responses.length - index}{response.code && <span className="response-code">{response.code}</span>}</strong><span className="respondent-name">{response.name || 'Nombre pendiente'}</span><span className="respondent-advisor">Respondió: {response.respondent || 'No registrado'}</span><span className="respondent-advisor">Cédula: {response.cedula || 'No registrada'} · Vendedor: {response.advisor || 'No registrado'}</span></div><span>{response.submittedAt ? response.submittedAt.toDate().toLocaleString('es-CR') : 'Fecha pendiente'}</span></div><div className="answer-grid">{questions.map((question) => <div className="answer-item" key={question.id}><span>{question.short}</span><strong>{response.answers?.[question.id] ?? 'Sin respuesta'}</strong></div>)}</div>{response.comment && <div className="response-comment"><span>Comentario</span><p>{response.comment}</p></div>}<small>ID: {response.id}</small></article>)}</div></section></main>
 }
 
 function App() {

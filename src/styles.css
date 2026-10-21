@@ -148,6 +148,10 @@ textarea::placeholder { color: #a9afb9; }
 .admin-title-row { display: flex; align-items: end; justify-content: space-between; gap: 20px; border-bottom: 1px solid #dfe3e4; padding-bottom: 26px; }
 .admin-title-row h1 { color: #223b8f; margin-bottom: 10px; }
 .admin-title-row p { margin: 0; }
+.admin-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.report-button { display: inline-flex; align-items: center; gap: 8px; border: 0; background: #223b8f; color: #fff; border-radius: 4px; padding: 11px 14px; font-size: 12px; font-weight: 700; }
+.report-button:hover:not(:disabled) { background: #1a2f75; }
+.report-button:disabled { opacity: .55; cursor: not-allowed; }
 .refresh-button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #d5dbe5; background: #fff; color: #223b8f; border-radius: 4px; padding: 11px 14px; font-size: 12px; font-weight: 700; }
 .refresh-button:disabled { opacity: .6; }
 .spin { animation: spin .8s linear infinite; }
